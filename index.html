@@ -152,39 +152,43 @@ body{font-family:'M PLUS Rounded 1c','Noto Sans JP',sans-serif;background:var(--
 <!-- ══ SETUP SCREEN ═══════════════════════════════════════ -->
 <div id="setup-screen">
   <div class="setup-card">
+
     <div class="setup-logo">こころ<span>メーター</span></div>
+    <input type="hidden" id="setup-gas-url" value="https://script.google.com/macros/s/AKfycbxftiugG5dwlJJtfj540pVxobQwrBN5FuNEmjrmpdq_IBzdW_PTagoX9lPtMIPsE4zn3g/exec">
 
     <div class="setup-section">
-      <div class="setup-label">① GAS WebアプリのURL</div>
-      <input class="setup-inp" id="setup-gas-url" placeholder="https://script.google.com/macros/s/xxxxx/exec">
+      <div class="setup-label">📢 道徳の発問</div>
+      <textarea class="setup-inp" id="setup-question" rows="3"
+        placeholder="例：公園のルールを守らない子に声をかけるべきですか？"
+        style="resize:none;line-height:1.6"></textarea>
     </div>
 
     <div class="setup-section">
-      <div class="setup-label">② 道徳の発問</div>
-      <input class="setup-inp" id="setup-question" placeholder="例：公園のルールを守らない子に声をかけるべき？">
-    </div>
-
-    <div class="setup-section">
-      <div class="setup-label">③ ルームID（自動生成・変更可）</div>
-      <div style="display:flex;gap:8px">
-        <input class="setup-inp" id="setup-room" style="flex:1" placeholder="例：3A5">
-        <button class="btn btn-ghost" onclick="genRoomId()" style="white-space:nowrap">🔀 再生成</button>
+      <div class="setup-label">🔑 ルームID（クラスごとに自動生成）</div>
+      <input class="setup-inp" id="setup-room"
+        style="font-size:22px;font-weight:800;letter-spacing:4px;text-align:center"
+        placeholder="例：3A5">
+      <button class="btn btn-ghost" onclick="genRoomId()"
+        style="width:100%;padding:10px">🔀 別のIDに変える</button>
+      <div style="font-size:12px;color:var(--muted);text-align:center">
+        クラスが違う先生は別のIDを使ってください
       </div>
     </div>
 
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" onclick="startTeacher()" style="flex:1;font-size:15px;padding:13px">📊 授業スタート</button>
+    <button class="btn btn-primary" onclick="startTeacher()"
+      style="width:100%;font-size:17px;padding:16px;border-radius:14px">
+      📊 授業スタート
+    </button>
+
+    <div style="background:#F7F6F3;border-radius:10px;padding:14px 16px;
+                font-size:12px;color:var(--muted);line-height:2">
+      <div style="font-weight:700;color:var(--text);margin-bottom:2px">💡 使い方</div>
+      ① 発問を入力<br>
+      ② 授業スタートを押す<br>
+      ③ 教師画面の「児童用URLをコピー」で配布<br>
+      ④ 児童は出席番号を入れてスライダーで投票
     </div>
 
-    <div class="setup-divider"></div>
-    <div class="setup-hint">
-      <strong>はじめに一度だけ設定します。</strong><br>
-      GAS URL は「ウェブアプリとして導入」したURLを貼ってください。<br>
-      ルームIDはクラスごとに異なれば何でもOK。<br>
-      <br>
-      <strong>GASのデプロイ設定：</strong><br>
-      実行ユーザー: <code>自分</code> ／ アクセス: <code>全員（匿名含む）</code>
-    </div>
   </div>
 </div>
 
@@ -352,6 +356,9 @@ body{font-family:'M PLUS Rounded 1c','Noto Sans JP',sans-serif;background:var(--
 // ══════════════════════════════════════════════════════════
 //  ROUTING
 // ══════════════════════════════════════════════════════════
+// ── GAS URL（固定） ──
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxftiugG5dwlJJtfj540pVxobQwrBN5FuNEmjrmpdq_IBzdW_PTagoX9lPtMIPsE4zn3g/exec';
+
 const QS    = new URLSearchParams(location.search);
 const MODE  = QS.get('mode');   // 'teacher' | 'student' | null
 const ROOM  = QS.get('room');   // string | null
@@ -417,7 +424,6 @@ if(!MODE || MODE==='setup'){
 
   // Auto-fill from localStorage if previously configured
   const saved = (() => { try{ return JSON.parse(localStorage.getItem('mm_setup'))||{}; }catch(e){ return {}; } })();
-  if(saved.gasUrl)  document.getElementById('setup-gas-url').value = saved.gasUrl;
   if(saved.question)document.getElementById('setup-question').value = saved.question;
   genRoomId();
 
@@ -430,7 +436,6 @@ if(!MODE || MODE==='setup'){
     const gasUrl  = document.getElementById('setup-gas-url').value.trim();
     const question= document.getElementById('setup-question').value.trim();
     const room    = document.getElementById('setup-room').value.trim() || randId();
-    if(!gasUrl){ toast('GAS URLを入力してください'); return; }
     if(!question){ toast('発問を入力してください'); return; }
 
     // Save setup
@@ -457,7 +462,7 @@ else if(MODE==='student'){
 
   if(!ROOM||!GAS_U){ document.getElementById('s-question').textContent='URLが正しくありません。先生に聞いてね。'; }
   else {
-    const gasUrl = decodeURIComponent(GAS_U);
+    const gasUrl = GAS_U ? decodeURIComponent(GAS_U) : DEFAULT_GAS_URL;
     document.getElementById('s-room-badge').textContent='ルーム: '+ROOM;
 
     // Fetch question from GAS
@@ -542,7 +547,7 @@ else if(MODE==='teacher'){
 
   if(!ROOM||!GAS_U){ alert('URLにroom・gasパラメータが必要です。セットアップ画面からやり直してください。'); }
   else {
-    const gasUrl = decodeURIComponent(GAS_U);
+    const gasUrl = GAS_U ? decodeURIComponent(GAS_U) : DEFAULT_GAS_URL;
     const GRID=20;
     let hmCanvas,hmCtx;
     let votes=[], logItems=[], tlData=[], question='';
