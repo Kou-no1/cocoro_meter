@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>こころメーター</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 /* ══ RESET & TOKENS ═══════════════════════════════════════ */
@@ -290,9 +289,7 @@ body{font-family:'M PLUS Rounded 1c','Noto Sans JP',sans-serif;background:var(--
         </div>
 
         <div id="view-timeline" style="display:none">
-          <div id="tl-wrap">
-            <canvas id="tl-canvas"></canvas>
-          </div>
+            <div id="tl-wrap" style="min-height:240px;padding:16px"></div>
         </div>
 
         <div class="stats-row">
@@ -373,20 +370,43 @@ function randId(){
   return Math.random().toString(36).slice(2,6).toUpperCase();
 }
 
+// POST: no-cors で送信（GAS側への書き込みは成功する。レスポンスは読めないがOK）
 async function gasPost(url, body){
-  const res = await fetch(url, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(body),
-    mode:'cors',
-  });
-  return res.json();
+  try {
+    await fetch(url, {
+      method:'POST',
+      mode:'no-cors',
+      headers:{'Content-Type':'text/plain'},
+      body: JSON.stringify(body),
+    });
+    return { ok: true };
+  } catch(e) {
+    console.warn('gasPost error', e);
+    return { ok: false };
+  }
 }
 
-async function gasGet(url, params={}){
-  const qs = new URLSearchParams(params).toString();
-  const res = await fetch(url + (qs?'?'+qs:''), { mode:'cors' });
-  return res.json();
+// GET: GASはリダイレクトでCORSヘッダーが消えるため JSONP方式で取得
+function gasGet(url, params={}){
+  return new Promise((resolve) => {
+    const cbName = '_gasCb_' + Date.now();
+    const qs = new URLSearchParams({...params, callback: cbName}).toString();
+    const script = document.createElement('script');
+    const timer = setTimeout(() => {
+      delete window[cbName];
+      script.remove();
+      resolve({ ok:false, votes:[], logs:[], question:'' });
+    }, 8000);
+    window[cbName] = (data) => {
+      clearTimeout(timer);
+      delete window[cbName];
+      script.remove();
+      resolve(data);
+    };
+    script.src = url + '?' + qs;
+    script.onerror = () => { clearTimeout(timer); resolve({ ok:false, votes:[], logs:[], question:'' }); };
+    document.head.appendChild(script);
+  });
 }
 
 // ══════════════════════════════════════════════════════════
@@ -524,7 +544,7 @@ else if(MODE==='teacher'){
   else {
     const gasUrl = decodeURIComponent(GAS_U);
     const GRID=20;
-    let hmCanvas,hmCtx,tlChart;
+    let hmCanvas,hmCtx;
     let votes=[], logItems=[], tlData=[], question='';
     let lastVoteCount=0;
 
@@ -534,7 +554,6 @@ else if(MODE==='teacher'){
     window.addEventListener('load',()=>{
       hmCanvas=document.getElementById('hm-canvas');
       hmCtx=hmCanvas.getContext('2d');
-      initTl();
       fetchData();
       setInterval(fetchData,5000); // poll every 5s
     });
@@ -582,12 +601,7 @@ else if(MODE==='teacher'){
           const avgJ=Math.round(votes.reduce((a,v)=>a+v.judgment,0)/votes.length);
           const ts=new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
           tlData.push({ts,avgS,avgJ});
-          if(tlChart){
-            tlChart.data.labels=tlData.map(d=>d.ts);
-            tlChart.data.datasets[0].data=tlData.map(d=>d.avgS);
-            tlChart.data.datasets[1].data=tlData.map(d=>d.avgJ);
-            tlChart.update();
-          }
+            drawTl();
         }
 
         drawHm();
@@ -640,22 +654,69 @@ else if(MODE==='teacher'){
     }
 
     // ── timeline ──
-    function initTl(){
-      const ctx=document.getElementById('tl-canvas').getContext('2d');
-      tlChart=new Chart(ctx,{
-        type:'line',
-        data:{labels:[],datasets:[
-          {label:'立場（賛成←→反対）',data:[],borderColor:'#4CAF9A',backgroundColor:'rgba(76,175,154,.1)',tension:.4,fill:true,pointRadius:4,pointBackgroundColor:'#4CAF9A'},
-          {label:'判断（悪←→仕方ない）',data:[],borderColor:'#7B6CF6',backgroundColor:'rgba(123,108,246,.1)',tension:.4,fill:true,pointRadius:4,pointBackgroundColor:'#7B6CF6'},
-        ]},
-        options:{responsive:true,maintainAspectRatio:false,
-          plugins:{legend:{display:false}},
-          scales:{
-            y:{min:-100,max:100,grid:{color:'rgba(0,0,0,.06)'},
-               ticks:{callback:v=>v===-100?'←賛成/悪':v===100?'反対/仕方なし→':v,font:{size:10}}},
-            x:{grid:{display:false},ticks:{font:{size:10}}}
-          }}
-      });
+    // ── SVG timeline (Chart.js不要の自前描画) ──
+    function drawTl(){
+      const wrap = document.getElementById('tl-wrap');
+      const W = wrap.offsetWidth - 32;
+      const H = 220;
+      const PAD = {top:16,right:16,bottom:32,left:44};
+      const gW = W - PAD.left - PAD.right;
+      const gH = H - PAD.top - PAD.bottom;
+      if(!tlData.length){ wrap.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:220px;color:var(--muted);font-size:13px">投票が集まると表示されます</div>'; return; }
+      const xStep = tlData.length > 1 ? gW / (tlData.length - 1) : gW;
+      function fy(v){ return PAD.top + gH - ((v + 100) / 200) * gH; }
+      function fx(i){ return PAD.left + (tlData.length > 1 ? i * xStep : gW/2); }
+
+      // build polyline points
+      const sp = tlData.map((d,i)=>`${fx(i)},${fy(d.avgS)}`).join(' ');
+      const jp = tlData.map((d,i)=>`${fx(i)},${fy(d.avgJ)}`).join(' ');
+
+      // area paths
+      const sareaTop = tlData.map((d,i)=>`${i===0?'M':' L'}${fx(i)},${fy(d.avgS)}`).join('') +
+        ` L${fx(tlData.length-1)},${PAD.top+gH} L${fx(0)},${PAD.top+gH} Z`;
+      const jareaTop = tlData.map((d,i)=>`${i===0?'M':' L'}${fx(i)},${fy(d.avgJ)}`).join('') +
+        ` L${fx(tlData.length-1)},${PAD.top+gH} L${fx(0)},${PAD.top+gH} Z`;
+
+      // y-axis ticks
+      const yticks = [-100,-50,0,50,100].map(v=>{
+        const y = fy(v);
+        const lbl = v===-100?'←賛成/悪':v===100?'反対/仕方なし→':v===0?'中立':v;
+        return `<line x1="${PAD.left-4}" y1="${y}" x2="${PAD.left+gW}" y2="${y}" stroke="#0000001a" stroke-width="1"/>
+          <text x="${PAD.left-8}" y="${y}" text-anchor="end" dominant-baseline="middle" font-size="9" fill="#8A8680">${lbl}</text>`;
+      }).join('');
+
+      // x-axis labels (show up to 6)
+      const step = Math.ceil(tlData.length / 6);
+      const xlabels = tlData.filter((_,i)=>i%step===0||i===tlData.length-1).map((d,_,arr)=>{
+        const i = tlData.indexOf(d);
+        return `<text x="${fx(i)}" y="${PAD.top+gH+14}" text-anchor="middle" font-size="9" fill="#8A8680">${d.ts}</text>`;
+      }).join('');
+
+      // dots
+      const sdots = tlData.map((d,i)=>`<circle cx="${fx(i)}" cy="${fy(d.avgS)}" r="4" fill="#4CAF9A" stroke="white" stroke-width="1.5"/>`).join('');
+      const jdots = tlData.map((d,i)=>`<circle cx="${fx(i)}" cy="${fy(d.avgJ)}" r="4" fill="#7B6CF6" stroke="white" stroke-width="1.5"/>`).join('');
+
+      // legend
+      const legend = `<rect x="${PAD.left}" y="4" width="10" height="10" rx="2" fill="#4CAF9A"/>
+        <text x="${PAD.left+14}" y="12" font-size="10" fill="#8A8680">立場（賛成←→反対）</text>
+        <rect x="${PAD.left+120}" y="4" width="10" height="10" rx="2" fill="#7B6CF6"/>
+        <text x="${PAD.left+134}" y="12" font-size="10" fill="#8A8680">判断（悪い←→仕方ない）</text>`;
+
+      wrap.innerHTML = \`<svg viewBox="0 0 \${W} \${H}" style="width:100%;height:\${H}px;font-family:'M PLUS Rounded 1c',sans-serif">
+        <defs>
+          <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4CAF9A" stop-opacity=".25"/><stop offset="100%" stop-color="#4CAF9A" stop-opacity="0"/></linearGradient>
+          <linearGradient id="jg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7B6CF6" stop-opacity=".25"/><stop offset="100%" stop-color="#7B6CF6" stop-opacity="0"/></linearGradient>
+        </defs>
+        \${legend}
+        \${yticks}
+        \${xlabels}
+        <path d="\${sareaTop}" fill="url(#sg)"/>
+        <path d="\${jareaTop}" fill="url(#jg)"/>
+        <polyline points="\${sp}" fill="none" stroke="#4CAF9A" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <polyline points="\${jp}" fill="none" stroke="#7B6CF6" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        \${sdots}
+        \${jdots}
+      </svg>\`;
     }
 
     // ── stats ──
@@ -747,7 +808,7 @@ else if(MODE==='teacher'){
       if(!confirm(`ルーム「${ROOM}」の投票データをすべて削除しますか？\n（発言ログはブラウザ内のみクリアされます）`)) return;
       logItems=[]; votes=[]; tlData=[]; lastVoteCount=0;
       renderLog(); drawHm(); updateStats();
-      if(tlChart){ tlChart.data.labels=[]; tlChart.data.datasets.forEach(d=>d.data=[]); tlChart.update(); }
+      drawTl();
       try{ await gasPost(gasUrl,{action:'reset',room:ROOM}); toast('リセットしました'); }
       catch(e){ toast('GASリセットに失敗しました'); }
     };
