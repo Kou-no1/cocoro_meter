@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>こころメーター</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --agree:#4CAF9A; --disagree:#E8654A;
+  --bad:#7B6CF6; --ok:#F5A623;
+  --bg:#F0EDE8; --surface:#FFFFFF;
+  --text:#2C2A27; --muted:#8A8680;
+  --border:#E0DDD8; --shadow:0 2px 12px rgba(0,0,0,0.08);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'M PLUS Rounded 1c','Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+/* ── SHARED ── */
+.btn{padding:10px 18px;border-radius:12px;border:none;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:transform .12s,opacity .12s}
+.btn:active{transform:scale(0.95)}
+.btn-primary{background:var(--agree);color:#fff}
+.btn-ghost{background:var(--bg);color:var(--text);border:1.5px solid var(--border)}
+.btn-danger{background:var(--disagree);color:#fff}
+.toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--text);color:#fff;padding:10px 22px;border-radius:100px;font-size:14px;font-weight:700;z-index:999;transition:transform .3s cubic-bezier(.34,1.56,.64,1);pointer-events:none}
+.toast.show{transform:translateX(-50%) translateY(0)}
+
+/* ══════════════════════════════════════
+   STUDENT MODE
+══════════════════════════════════════ */
+#student-app{display:none;flex-direction:column;align-items:center;justify-content:flex-start;min-height:100vh;padding:24px 20px 40px;gap:28px}
+
+/* — number entry — */
+.s-header{display:flex;flex-direction:column;align-items:center;gap:6px}
+.s-logo{font-size:20px;font-weight:800;color:var(--text)}
+.s-logo span{color:var(--agree)}
+.s-question{background:#FFF9F0;border:2px solid #F5D98A;border-radius:14px;padding:14px 18px;font-size:clamp(15px,3vw,20px);font-weight:700;color:#7A5F00;text-align:center;max-width:560px;width:100%;line-height:1.5}
+
+.number-gate{display:flex;flex-direction:column;align-items:center;gap:16px;width:100%;max-width:340px}
+.number-gate label{font-size:16px;font-weight:700;color:var(--muted)}
+.number-input-row{display:flex;align-items:center;gap:12px}
+.num-display{width:96px;height:96px;border-radius:16px;border:2.5px solid var(--border);background:var(--surface);font-size:48px;font-weight:800;display:flex;align-items:center;justify-content:center;color:var(--text);box-shadow:var(--shadow)}
+.numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:220px}
+.numpad-btn{height:52px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface);font-size:20px;font-weight:700;color:var(--text);cursor:pointer;font-family:inherit;transition:background .1s,transform .1s}
+.numpad-btn:active{transform:scale(0.92);background:var(--bg)}
+.numpad-btn.del{background:#FFF0ED;color:var(--disagree);border-color:var(--disagree)}
+.numpad-btn.ok{background:var(--agree);color:#fff;border-color:var(--agree)}
+
+/* — sliders — */
+.s-sliders{display:flex;flex-direction:column;gap:32px;width:100%;max-width:560px}
+.s-slider-block{display:flex;flex-direction:column;gap:10px}
+.s-slider-ends{display:flex;justify-content:space-between;align-items:center}
+.s-end{display:flex;flex-direction:column;align-items:center;gap:2px}
+.s-end .face{font-size:32px}
+.s-end .word{font-size:13px;font-weight:700;color:var(--muted)}
+.s-center-val{display:flex;flex-direction:column;align-items:center;gap:2px}
+.s-center-face{font-size:52px;transition:all .2s}
+.s-center-word{font-size:14px;font-weight:800;text-align:center;transition:color .2s}
+.s-track{height:68px;display:flex;align-items:center}
+.s-range{-webkit-appearance:none;appearance:none;width:100%;height:18px;border-radius:100px;outline:none;cursor:pointer}
+.s-range.stance{background:linear-gradient(to right,#4CAF9A,#E8E8E8,#E8654A)}
+.s-range.judgment{background:linear-gradient(to right,#7B6CF6,#E8E8E8,#F5A623)}
+.s-range::-webkit-slider-thumb{-webkit-appearance:none;width:56px;height:56px;border-radius:50%;background:#fff;border:3px solid #DDD;box-shadow:0 4px 16px rgba(0,0,0,.22);cursor:grab;transition:box-shadow .15s}
+.s-range:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:0 6px 24px rgba(0,0,0,.32)}
+.s-range.stance::-webkit-slider-thumb{border-color:var(--agree)}
+.s-range.judgment::-webkit-slider-thumb{border-color:var(--bad)}
+
+.s-submit-btn{width:220px;height:68px;border-radius:34px;border:none;background:var(--agree);color:#fff;font-size:22px;font-weight:800;font-family:inherit;cursor:pointer;box-shadow:0 6px 20px rgba(76,175,154,.4);transition:transform .15s,box-shadow .15s}
+.s-submit-btn:active{transform:scale(0.94);box-shadow:0 2px 8px rgba(76,175,154,.3)}
+.s-submitted{text-align:center;font-size:28px;font-weight:800;color:var(--agree);display:none;animation:pop .5s ease}
+@keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.15)}100%{transform:scale(1)}}
+
+/* ══════════════════════════════════════
+   TEACHER MODE
+══════════════════════════════════════ */
+#teacher-app{display:none;flex-direction:column;min-height:100vh}
+
+.t-header{background:var(--surface);border-bottom:1.5px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:8px}
+.t-logo{font-size:20px;font-weight:800;white-space:nowrap}
+.t-logo span{color:var(--agree)}
+.q-box{flex:1;min-width:200px;background:#FFF9F0;border:1.5px solid #F5D98A;border-radius:10px;padding:7px 14px;font-size:14px;font-weight:700;color:#7A5F00;display:flex;align-items:center;gap:8px;cursor:pointer}
+.student-url-box{display:flex;align-items:center;gap:6px;padding:6px 12px;background:#EEF7F4;border:1.5px solid var(--agree);border-radius:10px;font-size:12px;font-weight:700;color:var(--agree);cursor:pointer;white-space:nowrap}
+
+.t-main{display:grid;grid-template-columns:1fr 360px;gap:16px;padding:16px;max-width:1280px;margin:0 auto;flex:1}
+@media(max-width:900px){.t-main{grid-template-columns:1fr}}
+
+.panel{background:var(--surface);border-radius:16px;border:1px solid var(--border);box-shadow:var(--shadow);overflow:hidden}
+.panel-hd{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.panel-title{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.5px}
+.panel-bd{padding:16px}
+.badge{padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:#EEF7F4;color:var(--agree)}
+
+.view-tabs{display:flex;gap:4px;padding:8px 16px;background:var(--bg);border-bottom:1px solid var(--border)}
+.view-tab{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:none;background:transparent;color:var(--muted);font-family:inherit;transition:background .15s,color .15s}
+.view-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.1)}
+
+/* heatmap */
+#heatmap-wrap{position:relative;height:380px;display:flex;align-items:center;justify-content:center;padding:20px 36px 28px}
+#heatmap-canvas{display:block;width:100%;height:100%}
+.hm-label{position:absolute;font-size:11px;font-weight:700;color:var(--muted);pointer-events:none}
+#my-marker{position:absolute;width:16px;height:16px;border-radius:50%;background:#2C2A27;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);pointer-events:none;transform:translate(-50%,-50%);transition:left .4s,top .4s;display:none}
+
+/* timeline */
+#timeline-wrap{height:260px;position:relative;padding:16px}
+
+/* stats bar */
+.stats-row{display:flex;gap:10px;padding:10px 16px;background:var(--bg);border-top:1px solid var(--border);flex-wrap:wrap}
+.stat-chip{display:flex;align-items:center;gap:6px;padding:5px 12px;background:var(--surface);border-radius:20px;border:1px solid var(--border);font-size:12px}
+.stat-chip .lbl{color:var(--muted)}
+.stat-chip .val{font-weight:700}
+
+/* log */
+.log-list{overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:7px;max-height:320px}
+.log-item{padding:9px 12px;border-radius:10px;background:#FAFAFA;border:1px solid var(--border);position:relative;overflow:hidden}
+.log-item::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+.log-item.speak::before{background:var(--agree)}
+.log-item.move::before{background:var(--ok)}
+.log-item.submit::before{background:#4A90D9}
+.log-meta{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.log-name{font-size:12px;font-weight:700}
+.log-type{font-size:11px;color:var(--muted)}
+.log-time{font-size:11px;color:var(--muted);margin-left:auto}
+.log-text{font-size:12px;color:var(--muted)}
+.log-deltas{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap}
+.dchip{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px}
+.dchip.up{background:#E8F5F1;color:var(--agree)}
+.dchip.dn{background:#FFF0ED;color:var(--disagree)}
+.dchip.nu{background:#F3F2F8;color:#9B97CB}
+
+.speak-form{display:flex;gap:6px;padding:10px 12px;border-top:1px solid var(--border);background:var(--bg)}
+.speak-inp{flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;font-size:13px;background:var(--surface);color:var(--text);outline:none}
+.speak-inp:focus{border-color:var(--agree)}
+
+/* sync panel */
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#CCC}
+.sync-dot.on{background:var(--agree);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.sync-inp{padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;background:var(--surface);color:var(--text);outline:none;width:100%}
+.sync-inp:focus{border-color:var(--agree)}
+.sync-guide{font-size:11px;color:var(--muted);line-height:1.8;background:#F7F6F3;border-radius:8px;padding:10px 12px}
+.sync-guide code{font-family:monospace;background:#E8E6E1;padding:1px 5px;border-radius:4px;font-size:11px;color:#4A4845}
+
+/* modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:var(--surface);border-radius:16px;padding:24px;max-width:420px;width:90%;display:flex;flex-direction:column;gap:14px}
+.modal h2{font-size:18px;font-weight:700}
+.modal textarea,.modal input{border:1.5px solid var(--border);border-radius:10px;padding:10px;font-family:inherit;font-size:14px;width:100%;outline:none}
+.modal textarea:focus,.modal input:focus{border-color:var(--agree)}
+</style>
+</head>
+<body>
+
+<!-- ══ STUDENT APP ══════════════════════════════════ -->
+<div id="student-app">
+
+  <div class="s-header">
+    <div class="s-logo">こころ<span>メーター</span></div>
+    <div class="s-question" id="s-question">先生の質問がここに出ます</div>
+  </div>
+
+  <!-- Step 1: Number entry -->
+  <div id="step-number" class="number-gate">
+    <label>📋 しゅっせきばんごうを入れてね</label>
+    <div class="number-input-row">
+      <div class="num-display" id="num-display">—</div>
+    </div>
+    <div class="numpad">
+      <button class="numpad-btn" onclick="numPress('1')">1</button>
+      <button class="numpad-btn" onclick="numPress('2')">2</button>
+      <button class="numpad-btn" onclick="numPress('3')">3</button>
+      <button class="numpad-btn" onclick="numPress('4')">4</button>
+      <button class="numpad-btn" onclick="numPress('5')">5</button>
+      <button class="numpad-btn" onclick="numPress('6')">6</button>
+      <button class="numpad-btn" onclick="numPress('7')">7</button>
+      <button class="numpad-btn" onclick="numPress('8')">8</button>
+      <button class="numpad-btn" onclick="numPress('9')">9</button>
+      <button class="numpad-btn del" onclick="numPress('del')">⌫</button>
+      <button class="numpad-btn" onclick="numPress('0')">0</button>
+      <button class="numpad-btn ok" onclick="confirmNumber()">OK</button>
+    </div>
+  </div>
+
+  <!-- Step 2: Sliders -->
+  <div id="step-sliders" style="display:none;width:100%;max-width:560px;display:none;flex-direction:column;align-items:center;gap:28px">
+    <div style="font-size:15px;font-weight:700;color:var(--muted)">📌 <span id="s-number-label">1</span>ばん</div>
+
+    <div class="s-sliders">
+
+      <!-- Slider 1 -->
+      <div class="s-slider-block">
+        <div class="s-slider-ends">
+          <div class="s-end"><span class="face">😄</span><span class="word">さんせい</span></div>
+          <div class="s-center-val">
+            <div class="s-center-face" id="sf1">😐</div>
+            <div class="s-center-word" id="sw1" style="color:var(--muted)">どちらでもない</div>
+          </div>
+          <div class="s-end"><span class="face">😤</span><span class="word">はんたい</span></div>
+        </div>
+        <div class="s-track">
+          <input type="range" class="s-range stance" id="s-stance" min="-100" max="100" value="0" step="1" oninput="sUpdate(this,'stance')">
+        </div>
+      </div>
+
+      <!-- Slider 2 -->
+      <div class="s-slider-block">
+        <div class="s-slider-ends">
+          <div class="s-end"><span class="face">😡</span><span class="word">とてもわるい</span></div>
+          <div class="s-center-val">
+            <div class="s-center-face" id="sf2">😐</div>
+            <div class="s-center-word" id="sw2" style="color:var(--muted)">どちらでもない</div>
+          </div>
+          <div class="s-end"><span class="face">🤷</span><span class="word">しかたない</span></div>
+        </div>
+        <div class="s-track">
+          <input type="range" class="s-range judgment" id="s-judgment" min="-100" max="100" value="0" step="1" oninput="sUpdate(this,'judgment')">
+        </div>
+      </div>
+    </div>
+
+    <button class="s-submit-btn" id="s-submit-btn" onclick="studentSubmit()">✅ おくる！</button>
+    <div class="s-submitted" id="s-done">🎉 おくれました！ありがとう！</div>
+  </div>
+
+</div>
+
+<!-- ══ TEACHER APP ══════════════════════════════════ -->
+<div id="teacher-app">
+
+  <header class="t-header">
+    <div class="t-logo">こころ<span>メーター</span> <span style="font-size:12px;font-weight:400;color:var(--muted)">教師用</span></div>
+    <div class="q-box" onclick="openQModal()">
+      <span>📢</span>
+      <span id="t-question-text" style="flex:1">（発問をタップして編集）</span>
+      <span style="font-size:11px;color:var(--muted)">✎</span>
+    </div>
+    <div class="student-url-box" onclick="copyStudentUrl()">
+      🔗 児童用URLをコピー
+    </div>
+    <button class="btn btn-danger" onclick="resetAll()">リセット</button>
+  </header>
+
+  <div class="t-main">
+    <!-- LEFT -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="panel">
+        <div class="view-tabs">
+          <button class="view-tab active" onclick="switchView('heatmap',this)">🗺 ヒートマップ</button>
+          <button class="view-tab" onclick="switchView('timeline',this)">📈 時系列グラフ</button>
+        </div>
+
+        <div id="view-heatmap">
+          <div id="heatmap-wrap">
+            <div class="hm-label" style="top:6px;left:50%;transform:translateX(-50%)">← さんせい ・ はんたい →</div>
+            <div class="hm-label" style="left:6px;top:50%;transform:translateY(-50%) rotate(-90deg);white-space:nowrap">↑ とてもわるい ・ しかたない ↓</div>
+            <canvas id="heatmap-canvas"></canvas>
+            <div id="my-marker"></div>
+          </div>
+        </div>
+
+        <div id="view-timeline" style="display:none">
+          <div id="timeline-wrap">
+            <canvas id="timeline-canvas" role="img" aria-label="立場・判断の平均値の時系列変化グラフ"></canvas>
+          </div>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-chip"><span class="lbl">参加</span><span class="val" id="st-count">0人</span></div>
+          <div class="stat-chip"><span class="lbl">立場の平均</span><span class="val" id="st-stance">—</span></div>
+          <div class="stat-chip"><span class="lbl">判断の平均</span><span class="val" id="st-judgment">—</span></div>
+          <div class="stat-chip"><span class="lbl">更新</span><span class="val" id="st-time">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <!-- LOG -->
+      <div class="panel" style="flex:1;display:flex;flex-direction:column">
+        <div class="panel-hd">
+          <span class="panel-title">発言ログ</span>
+          <span class="badge" id="log-badge">0件</span>
+          <button class="btn btn-ghost" style="margin-left:auto;padding:4px 10px;font-size:11px" onclick="clearLog()">クリア</button>
+        </div>
+        <div class="log-list" id="log-list"></div>
+        <div class="speak-form">
+          <input class="speak-inp" id="spk-name" placeholder="名前" style="width:90px;flex:none">
+          <input class="speak-inp" id="spk-text" placeholder="発言メモ…" onkeydown="if(event.key==='Enter')recordSpeak()">
+          <button class="btn btn-primary" onclick="recordSpeak()">記録</button>
+        </div>
+      </div>
+
+      <!-- SYNC -->
+      <div class="panel">
+        <div class="panel-hd">
+          <span class="panel-title">🔗 Google Sheets 同期</span>
+          <div class="sync-dot" id="sync-dot"></div>
+          <span id="sync-lbl" style="font-size:11px;color:var(--muted)">未接続</span>
+        </div>
+        <div class="panel-bd" style="display:flex;flex-direction:column;gap:10px">
+          <input class="sync-inp" id="gas-url" placeholder="GAS WebアプリURL">
+          <input class="sync-inp" id="class-id" placeholder="クラスID（例：3-2）">
+          <button class="btn btn-primary" onclick="connectSync()" style="width:100%">接続する</button>
+          <div class="sync-guide">
+            児童端末の投票が自動送信されます。<br>
+            <code>doPost(e)</code> で JSON 受信 → シートに書き込み。<br>
+            <a href="#" onclick="showGasSample(event)" style="color:var(--agree);font-weight:700;font-size:11px">GASサンプルコードを表示 →</a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-bg" id="q-modal">
+  <div class="modal">
+    <h2>発問を編集</h2>
+    <textarea id="modal-q" rows="3" placeholder="例：公園のルールを守らない子に声をかけるべきですか？"></textarea>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" onclick="saveQuestion()" style="flex:1">保存</button>
+      <button class="btn btn-ghost" onclick="closeQModal()" style="flex:1">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════
+// ROUTING: decide mode from URL param
+// ══════════════════════════════════════
+const params = new URLSearchParams(location.search);
+const MODE = params.get('mode') || 'teacher'; // default teacher
+
+// Shared state (in real use, sync via GAS; here: localStorage as demo bridge)
+const STORAGE_KEY = 'moral_meter_v1';
+
+function loadShared(){
+  try{ return JSON.parse(localStorage.getItem(STORAGE_KEY)) || defaultState(); }catch(e){ return defaultState(); }
+}
+function saveShared(s){ localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
+function defaultState(){
+  return {
+    question:'この子の行動は正しいと思いますか？',
+    votes:[],        // [{id,stance,judgment,ts}]
+    logItems:[],
+    timelineData:[],
+    syncUrl:'',
+    syncClass:'',
+  };
+}
+
+let S = loadShared();
+
+// ══════════════════════════════════════
+// STUDENT MODE
+// ══════════════════════════════════════
+if(MODE === 'student'){
+  document.title = 'こころメーター（児童用）';
+  document.getElementById('student-app').style.display = 'flex';
+  document.getElementById('s-question').textContent = S.question;
+
+  // — Numpad —
+  let numStr = '';
+  function numPress(v){
+    if(v === 'del'){ numStr = numStr.slice(0,-1); }
+    else if(v === 'ok'){ confirmNumber(); return; }
+    else { if(numStr.length >= 2) numStr = numStr.slice(0,-1); numStr += v; }
+    document.getElementById('num-display').textContent = numStr || '—';
+  }
+  window.numPress = numPress;
+
+  function confirmNumber(){
+    if(!numStr){ showToast('ばんごうを入れてね'); return; }
+    document.getElementById('step-number').style.display = 'none';
+    const sl = document.getElementById('step-sliders');
+    sl.style.display = 'flex';
+    document.getElementById('s-number-label').textContent = numStr;
+  }
+  window.confirmNumber = confirmNumber;
+
+  // — Slider feedback —
+  const SMAP=[
+    {min:-100,max:-60,face:'😄',word:'とても さんせい！',color:'#4CAF9A'},
+    {min:-60,max:-20,face:'🙂',word:'さんせい',color:'#4CAF9A'},
+    {min:-20,max:20,face:'😐',word:'どちらでもない',color:'#8A8680'},
+    {min:20,max:60,face:'🙁',word:'はんたい',color:'#E8654A'},
+    {min:60,max:101,face:'😤',word:'とても はんたい！',color:'#E8654A'},
+  ];
+  const JMAP=[
+    {min:-100,max:-60,face:'😡',word:'とても わるい！',color:'#7B6CF6'},
+    {min:-60,max:-20,face:'😟',word:'わるい',color:'#9B97CB'},
+    {min:-20,max:20,face:'😐',word:'どちらでもない',color:'#8A8680'},
+    {min:20,max:60,face:'🤔',word:'しかたない かも',color:'#F5A623'},
+    {min:60,max:101,face:'🤷',word:'しかたない！',color:'#F5A623'},
+  ];
+  function getMap(map,v){ return map.find(m=>v>=m.min&&v<m.max)||map[2]; }
+
+  function sUpdate(el,type){
+    const v=parseInt(el.value);
+    if(type==='stance'){
+      const m=getMap(SMAP,v);
+      document.getElementById('sf1').textContent=m.face;
+      document.getElementById('sw1').textContent=m.word;
+      document.getElementById('sw1').style.color=m.color;
+    } else {
+      const m=getMap(JMAP,v);
+      document.getElementById('sf2').textContent=m.face;
+      document.getElementById('sw2').textContent=m.word;
+      document.getElementById('sw2').style.color=m.color;
+    }
+  }
+  window.sUpdate = sUpdate;
+
+  // — Submit —
+  function studentSubmit(){
+    const stance=parseInt(document.getElementById('s-stance').value);
+    const judgment=parseInt(document.getElementById('s-judgment').value);
+    const num=parseInt(numStr);
+    const ts=Date.now();
+
+    S = loadShared();
+    const existing=S.votes.find(v=>v.id===num);
+    const prevS=existing?existing.stance:null;
+    const prevJ=existing?existing.judgment:null;
+    if(existing){ existing.stance=stance; existing.judgment=judgment; existing.ts=ts; }
+    else { S.votes.push({id:num,stance,judgment,ts}); }
+
+    // add log
+    S.logItems.unshift({
+      type: existing?'move':'submit',
+      name: num+'番',
+      text: existing?'立場・判断を更新しました':'初期投票を送信しました',
+      ts: new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}),
+      stanceBefore:prevS, stanceAfter:stance,
+      judgBefore:prevJ, judgAfter:judgment,
+    });
+
+    // timeline
+    const avgS=Math.round(S.votes.reduce((a,v)=>a+v.stance,0)/S.votes.length);
+    const avgJ=Math.round(S.votes.reduce((a,v)=>a+v.judgment,0)/S.votes.length);
+    S.timelineData.push({
+      ts:new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
+      avgStance:avgS, avgJudgment:avgJ, count:S.votes.length
+    });
+
+    saveShared(S);
+    syncToSheets({id:num,stance,judgment});
+
+    document.getElementById('s-submit-btn').style.display='none';
+    const done=document.getElementById('s-done');
+    done.style.display='block';
+
+    // allow re-vote after 3s
+    setTimeout(()=>{
+      done.style.display='none';
+      document.getElementById('s-submit-btn').style.display='block';
+    },3000);
+  }
+  window.studentSubmit = studentSubmit;
+}
+
+// ══════════════════════════════════════
+// TEACHER MODE
+// ══════════════════════════════════════
+if(MODE === 'teacher'){
+  document.title = 'こころメーター（教師用）';
+  document.getElementById('teacher-app').style.display = 'flex';
+
+  let hmCanvas, hmCtx, tlChart;
+  const GRID=20;
+
+  function init(){
+    S = loadShared();
+    document.getElementById('t-question-text').textContent = S.question;
+    initHeatmap();
+    initTimeline();
+    renderLog();
+    drawHeatmap();
+    updateStats();
+    // poll localStorage every 3s (simulates sync)
+    setInterval(pollUpdates, 3000);
+  }
+
+  function pollUpdates(){
+    const fresh = loadShared();
+    const prevCount = S.votes.length;
+    S = fresh;
+    if(S.votes.length !== prevCount){ drawHeatmap(); renderLog(); updateStats(); }
+    if(tlChart && S.timelineData.length > tlChart.data.labels.length){
+      tlChart.data.labels = S.timelineData.map(d=>d.ts);
+      tlChart.data.datasets[0].data = S.timelineData.map(d=>d.avgStance);
+      tlChart.data.datasets[1].data = S.timelineData.map(d=>d.avgJudgment);
+      tlChart.update();
+    }
+  }
+
+  // — Heatmap —
+  function initHeatmap(){
+    hmCanvas = document.getElementById('heatmap-canvas');
+    hmCtx = hmCanvas.getContext('2d');
+  }
+  function drawHeatmap(){
+    if(!hmCanvas) return;
+    const W = hmCanvas.offsetWidth || 480;
+    const H = hmCanvas.offsetHeight || 300;
+    hmCanvas.width = W; hmCanvas.height = H;
+    const cw=W/GRID, ch=H/GRID;
+    const grid=Array(GRID).fill(null).map(()=>Array(GRID).fill(0));
+    S.votes.forEach(v=>{
+      const xi=Math.min(GRID-1,Math.floor((v.stance+100)/(200/GRID)));
+      const yi=Math.min(GRID-1,Math.floor((v.judgment+100)/(200/GRID)));
+      grid[yi][xi]++;
+    });
+    const mx=Math.max(1,...grid.flat());
+    hmCtx.clearRect(0,0,W,H);
+    hmCtx.fillStyle='#F7F6F3'; hmCtx.fillRect(0,0,W,H);
+    // grid lines
+    hmCtx.strokeStyle='rgba(0,0,0,0.06)'; hmCtx.lineWidth=1; hmCtx.setLineDash([4,4]);
+    hmCtx.beginPath();
+    hmCtx.moveTo(W/2,0); hmCtx.lineTo(W/2,H);
+    hmCtx.moveTo(0,H/2); hmCtx.lineTo(W,H/2);
+    hmCtx.stroke(); hmCtx.setLineDash([]);
+    // cells
+    for(let y=0;y<GRID;y++) for(let x=0;x<GRID;x++){
+      const c=grid[y][x]; if(!c) continue;
+      const t=c/mx;
+      const r=Math.round(76+(232-76)*t), g=Math.round(175+(75-175)*t), b=Math.round(154+(74-154)*t);
+      hmCtx.fillStyle=`rgba(${r},${g},${b},${.2+t*.8})`;
+      hmCtx.beginPath(); hmCtx.roundRect(x*cw+1,y*ch+1,cw-2,ch-2,3); hmCtx.fill();
+      if(c>0){
+        hmCtx.fillStyle=t>.5?'rgba(255,255,255,.9)':'rgba(0,0,0,.5)';
+        hmCtx.font=`bold ${Math.min(11,cw*.5)}px "M PLUS Rounded 1c",sans-serif`;
+        hmCtx.textAlign='center'; hmCtx.textBaseline='middle';
+        hmCtx.fillText(c, x*cw+cw/2, y*ch+ch/2);
+      }
+    }
+  }
+
+  // — Timeline —
+  function initTimeline(){
+    const ctx=document.getElementById('timeline-canvas').getContext('2d');
+    tlChart = new Chart(ctx,{
+      type:'line',
+      data:{
+        labels:S.timelineData.map(d=>d.ts),
+        datasets:[
+          {label:'立場（賛成←→反対）',data:S.timelineData.map(d=>d.avgStance),
+           borderColor:'#4CAF9A',backgroundColor:'rgba(76,175,154,.1)',tension:.4,fill:true,pointRadius:4,pointBackgroundColor:'#4CAF9A'},
+          {label:'判断（悪い←→仕方ない）',data:S.timelineData.map(d=>d.avgJudgment),
+           borderColor:'#7B6CF6',backgroundColor:'rgba(123,108,246,.1)',tension:.4,fill:true,pointRadius:4,pointBackgroundColor:'#7B6CF6'},
+        ]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{
+          y:{min:-100,max:100,grid:{color:'rgba(0,0,0,.06)'},
+             ticks:{callback:v=>v===-100?'←賛成/悪い':v===100?'反対/仕方なし→':v,font:{size:10}}},
+          x:{grid:{display:false},ticks:{font:{size:10}}}
+        }
+      }
+    });
+  }
+
+  // — Stats —
+  function updateStats(){
+    const n=S.votes.length;
+    document.getElementById('st-count').textContent=n+'人';
+    if(!n) return;
+    const as=Math.round(S.votes.reduce((a,v)=>a+v.stance,0)/n);
+    const aj=Math.round(S.votes.reduce((a,v)=>a+v.judgment,0)/n);
+    document.getElementById('st-stance').textContent=`${as>0?'+':''}${as}`;
+    document.getElementById('st-judgment').textContent=`${aj>0?'+':''}${aj}`;
+    document.getElementById('st-time').textContent=new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }
+
+  // — Log —
+  function renderLog(){
+    const el=document.getElementById('log-list');
+    document.getElementById('log-badge').textContent=S.logItems.length+'件';
+    el.innerHTML=S.logItems.map(item=>{
+      let deltas='';
+      if(item.stanceAfter!==null&&item.stanceAfter!==undefined){
+        const sd=item.stanceAfter-(item.stanceBefore??0);
+        const jd=item.judgAfter-(item.judgBefore??0);
+        deltas=`<div class="log-deltas">
+          <span class="dchip ${sd>10?'dn':sd<-10?'up':'nu'}">立場 ${sd>0?'+':''}${sd}</span>
+          <span class="dchip ${jd>10?'dn':jd<-10?'up':'nu'}">判断 ${jd>0?'+':''}${jd}</span>
+        </div>`;
+      }
+      return `<div class="log-item ${item.type}">
+        <div class="log-meta">
+          <span class="log-name">${item.name}</span>
+          <span class="log-type">${{speak:'💬',move:'🔄',submit:'📤'}[item.type]||''}</span>
+          <span class="log-time">${item.ts}</span>
+        </div>
+        <div class="log-text">${item.text}</div>
+        ${deltas}
+      </div>`;
+    }).join('');
+  }
+  window.clearLog=()=>{ S.logItems=[]; saveShared(S); renderLog(); };
+
+  function recordSpeak(){
+    const name=document.getElementById('spk-name').value.trim();
+    const text=document.getElementById('spk-text').value.trim();
+    if(!text) return;
+    S=loadShared();
+    S.logItems.unshift({type:'speak',name:name||'先生',text,ts:new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})});
+    saveShared(S); renderLog();
+    document.getElementById('spk-text').value='';
+    showToast(`「${name||'先生'}」の発言を記録`);
+  }
+  window.recordSpeak=recordSpeak;
+
+  // — Question modal —
+  window.openQModal=()=>{
+    document.getElementById('modal-q').value=S.question;
+    document.getElementById('q-modal').classList.add('open');
+  };
+  window.closeQModal=()=>document.getElementById('q-modal').classList.remove('open');
+  window.saveQuestion=()=>{
+    const q=document.getElementById('modal-q').value.trim();
+    if(q){ S.question=q; saveShared(S); document.getElementById('t-question-text').textContent=q; }
+    closeQModal(); showToast('発問を更新しました');
+  };
+
+  // — Reset —
+  window.resetAll=()=>{
+    if(!confirm('投票データ・ログをすべてリセットしますか？')) return;
+    const q=S.question;
+    S=defaultState(); S.question=q; saveShared(S);
+    drawHeatmap(); renderLog(); updateStats();
+    if(tlChart){ tlChart.data.labels=[]; tlChart.data.datasets.forEach(d=>d.data=[]); tlChart.update(); }
+    showToast('リセットしました');
+  };
+
+  // — Copy student URL —
+  window.copyStudentUrl=()=>{
+    const url=location.origin+location.pathname+'?mode=student';
+    navigator.clipboard.writeText(url).then(()=>showToast('児童用URLをコピーしました'));
+  };
+
+  // — View switch —
+  window.switchView=(view,el)=>{
+    document.querySelectorAll('.view-tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('view-heatmap').style.display=view==='heatmap'?'block':'none';
+    document.getElementById('view-timeline').style.display=view==='timeline'?'block':'none';
+    if(view==='heatmap') drawHeatmap();
+  };
+
+  // — Sync —
+  window.connectSync=()=>{
+    const url=document.getElementById('gas-url').value.trim();
+    const cls=document.getElementById('class-id').value.trim();
+    if(!url){ showToast('URLを入力してください'); return; }
+    S.syncUrl=url; S.syncClass=cls; saveShared(S);
+    document.getElementById('sync-dot').classList.add('on');
+    document.getElementById('sync-lbl').textContent='接続済み';
+    showToast('接続しました');
+    setInterval(fetchFromSheets,10000);
+  };
+
+  async function fetchFromSheets(){
+    if(!S.syncUrl) return;
+    try{
+      const res=await fetch(S.syncUrl+'?class='+encodeURIComponent(S.syncClass)+'&action=get');
+      if(!res.ok) return;
+      const data=await res.json();
+      if(Array.isArray(data.votes)){
+        data.votes.forEach(v=>{
+          const ex=S.votes.find(x=>x.id===v.id);
+          if(!ex) S.votes.push(v); else { ex.stance=v.stance; ex.judgment=v.judgment; }
+        });
+        saveShared(S); drawHeatmap(); renderLog(); updateStats();
+      }
+    }catch(e){}
+  }
+
+  window.showGasSample=(e)=>{
+    e.preventDefault();
+    alert(`// Google Apps Script — コード.gs
+const SS_ID = 'スプレッドシートID';
+
+function doPost(e) {
+  const d = JSON.parse(e.postData.contents);
+  const sh = SpreadsheetApp.openById(SS_ID)
+              .getSheetByName('votes')
+              || SpreadsheetApp.openById(SS_ID).insertSheet('votes');
+  sh.appendRow([d.ts||Date.now(), d.class||'', d.id, d.stance, d.judgment]);
+  return ContentService
+    .createTextOutput(JSON.stringify({ok:true}))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  const cls = e.parameter.class;
+  const sh = SpreadsheetApp.openById(SS_ID).getSheetByName('votes');
+  if(!sh) return json({votes:[]});
+  const votes = sh.getDataRange().getValues().slice(1)
+    .filter(r=>r[1]===cls)
+    .map((r,i)=>({id:r[2],stance:r[3],judgment:r[4]}));
+  return json({votes});
+}
+
+function json(obj){
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}`);
+  };
+
+  window.addEventListener('resize',drawHeatmap);
+  window.addEventListener('load',init);
+}
+
+// ══════════════════════════════════════
+// SHARED UTILS
+// ══════════════════════════════════════
+function defaultState(){
+  return {question:'この子の行動は正しいと思いますか？',votes:[],logItems:[],timelineData:[],syncUrl:'',syncClass:''};
+}
+
+async function syncToSheets(data){
+  const s=loadShared();
+  if(!s.syncUrl) return;
+  try{
+    await fetch(s.syncUrl,{
+      method:'POST',mode:'no-cors',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({class:s.syncClass,...data,ts:Date.now()})
+    });
+  }catch(e){}
+}
+
+let toastTimer;
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),2500);
+}
+window.showToast=showToast;
+</script>
+</body>
+</html>
