@@ -654,71 +654,68 @@ else if(MODE==='teacher'){
     }
 
     // ── timeline ──
-    // ── SVG timeline (Chart.js不要の自前描画) ──
+    // ── SVG timeline ──
     function drawTl(){
-      const wrap = document.getElementById('tl-wrap');
-      const W = wrap.offsetWidth - 32;
-      const H = 220;
-      const PAD = {top:16,right:16,bottom:32,left:44};
-      const gW = W - PAD.left - PAD.right;
-      const gH = H - PAD.top - PAD.bottom;
-      if(!tlData.length){ wrap.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:220px;color:var(--muted);font-size:13px">投票が集まると表示されます</div>'; return; }
-      const xStep = tlData.length > 1 ? gW / (tlData.length - 1) : gW;
-      function fy(v){ return PAD.top + gH - ((v + 100) / 200) * gH; }
-      function fx(i){ return PAD.left + (tlData.length > 1 ? i * xStep : gW/2); }
+      var wrap = document.getElementById('tl-wrap');
+      if(!wrap) return;
+      var W = (wrap.offsetWidth||500) - 32;
+      var H = 220;
+      var PT = 20, PR = 16, PB = 32, PL = 44;
+      var gW = W - PL - PR;
+      var gH = H - PT - PB;
+      if(!tlData.length){
+        wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:220px;color:#8A8680;font-size:13px">投票が集まると表示されます</div>';
+        return;
+      }
+      function fy(v){ return PT + gH - ((v+100)/200)*gH; }
+      function fx(i){ return PL + (tlData.length>1 ? i*(gW/(tlData.length-1)) : gW/2); }
 
-      // build polyline points
-      const sp = tlData.map((d,i)=>`${fx(i)},${fy(d.avgS)}`).join(' ');
-      const jp = tlData.map((d,i)=>`${fx(i)},${fy(d.avgJ)}`).join(' ');
+      var sp='', jp='', saArea='', jaArea='', sdots='', jdots='', xlabels='';
+      tlData.forEach(function(d,i){
+        sp  += (i===0?'':' ') + fx(i)+','+fy(d.avgS);
+        jp  += (i===0?'':' ') + fx(i)+','+fy(d.avgJ);
+        saArea += (i===0?'M':'L') + fx(i)+' '+fy(d.avgS)+' ';
+        jaArea += (i===0?'M':'L') + fx(i)+' '+fy(d.avgJ)+' ';
+        sdots += '<circle cx="'+fx(i)+'" cy="'+fy(d.avgS)+'" r="4" fill="#4CAF9A" stroke="white" stroke-width="1.5"/>';
+        jdots += '<circle cx="'+fx(i)+'" cy="'+fy(d.avgJ)+'" r="4" fill="#7B6CF6" stroke="white" stroke-width="1.5"/>';
+      });
+      saArea += 'L'+fx(tlData.length-1)+' '+(PT+gH)+' L'+PL+' '+(PT+gH)+' Z';
+      jaArea += 'L'+fx(tlData.length-1)+' '+(PT+gH)+' L'+PL+' '+(PT+gH)+' Z';
 
-      // area paths
-      const sareaTop = tlData.map((d,i)=>`${i===0?'M':' L'}${fx(i)},${fy(d.avgS)}`).join('') +
-        ` L${fx(tlData.length-1)},${PAD.top+gH} L${fx(0)},${PAD.top+gH} Z`;
-      const jareaTop = tlData.map((d,i)=>`${i===0?'M':' L'}${fx(i)},${fy(d.avgJ)}`).join('') +
-        ` L${fx(tlData.length-1)},${PAD.top+gH} L${fx(0)},${PAD.top+gH} Z`;
+      var yticks='';
+      [-100,-50,0,50,100].forEach(function(v){
+        var y=fy(v);
+        var lbl = v===-100?'←賛成/悪' : v===100?'反対/仕方→' : String(v);
+        yticks += '<line x1="'+(PL-4)+'" y1="'+y+'" x2="'+(PL+gW)+'" y2="'+y+'" stroke="rgba(0,0,0,0.08)" stroke-width="1"/>';
+        yticks += '<text x="'+(PL-7)+'" y="'+y+'" text-anchor="end" dominant-baseline="middle" font-size="9" fill="#8A8680">'+lbl+'</text>';
+      });
 
-      // y-axis ticks
-      const yticks = [-100,-50,0,50,100].map(v=>{
-        const y = fy(v);
-        const lbl = v===-100?'←賛成/悪':v===100?'反対/仕方なし→':v===0?'中立':v;
-        return `<line x1="${PAD.left-4}" y1="${y}" x2="${PAD.left+gW}" y2="${y}" stroke="#0000001a" stroke-width="1"/>
-          <text x="${PAD.left-8}" y="${y}" text-anchor="end" dominant-baseline="middle" font-size="9" fill="#8A8680">${lbl}</text>`;
-      }).join('');
+      var step = Math.max(1, Math.ceil(tlData.length/6));
+      tlData.forEach(function(d,i){
+        if(i%step===0 || i===tlData.length-1){
+          xlabels += '<text x="'+fx(i)+'" y="'+(PT+gH+14)+'" text-anchor="middle" font-size="9" fill="#8A8680">'+d.ts+'</text>';
+        }
+      });
 
-      // x-axis labels (show up to 6)
-      const step = Math.ceil(tlData.length / 6);
-      const xlabels = tlData.filter((_,i)=>i%step===0||i===tlData.length-1).map((d,_,arr)=>{
-        const i = tlData.indexOf(d);
-        return `<text x="${fx(i)}" y="${PAD.top+gH+14}" text-anchor="middle" font-size="9" fill="#8A8680">${d.ts}</text>`;
-      }).join('');
-
-      // dots
-      const sdots = tlData.map((d,i)=>`<circle cx="${fx(i)}" cy="${fy(d.avgS)}" r="4" fill="#4CAF9A" stroke="white" stroke-width="1.5"/>`).join('');
-      const jdots = tlData.map((d,i)=>`<circle cx="${fx(i)}" cy="${fy(d.avgJ)}" r="4" fill="#7B6CF6" stroke="white" stroke-width="1.5"/>`).join('');
-
-      // legend
-      const legend = `<rect x="${PAD.left}" y="4" width="10" height="10" rx="2" fill="#4CAF9A"/>
-        <text x="${PAD.left+14}" y="12" font-size="10" fill="#8A8680">立場（賛成←→反対）</text>
-        <rect x="${PAD.left+120}" y="4" width="10" height="10" rx="2" fill="#7B6CF6"/>
-        <text x="${PAD.left+134}" y="12" font-size="10" fill="#8A8680">判断（悪い←→仕方ない）</text>`;
-
-      wrap.innerHTML = \`<svg viewBox="0 0 \${W} \${H}" style="width:100%;height:\${H}px;font-family:'M PLUS Rounded 1c',sans-serif">
-        <defs>
-          <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4CAF9A" stop-opacity=".25"/><stop offset="100%" stop-color="#4CAF9A" stop-opacity="0"/></linearGradient>
-          <linearGradient id="jg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7B6CF6" stop-opacity=".25"/><stop offset="100%" stop-color="#7B6CF6" stop-opacity="0"/></linearGradient>
-        </defs>
-        \${legend}
-        \${yticks}
-        \${xlabels}
-        <path d="\${sareaTop}" fill="url(#sg)"/>
-        <path d="\${jareaTop}" fill="url(#jg)"/>
-        <polyline points="\${sp}" fill="none" stroke="#4CAF9A" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-        <polyline points="\${jp}" fill="none" stroke="#7B6CF6" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-        \${sdots}
-        \${jdots}
-      </svg>\`;
+      var svg = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:'+H+'px;overflow:visible" xmlns="http://www.w3.org/2000/svg">'
+        +'<defs>'
+        +'<linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4CAF9A" stop-opacity=".3"/><stop offset="100%" stop-color="#4CAF9A" stop-opacity="0"/></linearGradient>'
+        +'<linearGradient id="jg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7B6CF6" stop-opacity=".3"/><stop offset="100%" stop-color="#7B6CF6" stop-opacity="0"/></linearGradient>'
+        +'</defs>'
+        +'<rect x="'+PL+'" y="'+PT+'" width="'+gW+'" height="'+gH+'" fill="#F7F6F3" rx="4"/>'
+        +yticks+xlabels
+        +'<path d="'+saArea+'" fill="url(#sg)"/>'
+        +'<path d="'+jaArea+'" fill="url(#jg)"/>'
+        +'<polyline points="'+sp+'" fill="none" stroke="#4CAF9A" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'
+        +'<polyline points="'+jp+'" fill="none" stroke="#7B6CF6" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'
+        +sdots+jdots
+        +'<rect x="'+PL+'" y="4" width="10" height="10" rx="2" fill="#4CAF9A"/>'
+        +'<text x="'+(PL+14)+'" y="12" font-size="10" fill="#8A8680">立場（賛成←→反対）</text>'
+        +'<rect x="'+(PL+140)+'" y="4" width="10" height="10" rx="2" fill="#7B6CF6"/>'
+        +'<text x="'+(PL+154)+'" y="12" font-size="10" fill="#8A8680">判断（悪い←→仕方ない）</text>'
+        +'</svg>';
+      wrap.innerHTML = svg;
     }
-
     // ── stats ──
     function updateStats(){
       const n=votes.length;
